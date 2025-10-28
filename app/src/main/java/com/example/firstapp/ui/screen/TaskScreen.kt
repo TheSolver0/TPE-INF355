@@ -68,7 +68,7 @@ fun TaskScreen(viewModel: TaskViewModel, darkTheme: Boolean = false) {
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .background(cardColor, RoundedCornerShape(12.dp))
+                .background(cardColor, RoundedCornerShape(50.dp))
                 .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
             BasicTextField(
@@ -89,7 +89,7 @@ fun TaskScreen(viewModel: TaskViewModel, darkTheme: Boolean = false) {
                     newTask = TextFieldValue("")
                 }
             }) {
-                Icon(Icons.Default.Add, contentDescription = "Ajouter une Tâche", tint = Color.Blue)
+                Icon(Icons.Default.Add, contentDescription = "Ajouter une Tâche", tint = Color.Blue,)
             }
         }
 
