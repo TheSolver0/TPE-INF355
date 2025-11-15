@@ -17,6 +17,22 @@ class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
             repository.addTask("Se brosser")
             repository.addTask("Faire du sport")
             refreshTasks()
+
+   /* init {
+        // Données initiales
+        repository.addTask("Se réveiller")
+        repository.addTask("Se brosser")
+        repository.addTask("Faire du sport")
+        refreshTasks()
+    }*/
+   init {
+       loadTasks()
+   }
+
+    private fun loadTasks() {
+        repository.getTasks { taskList ->
+            _tasks.clear()
+            _tasks.addAll(taskList)
         }
     }
 
@@ -25,22 +41,25 @@ class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
     fun getIncompleteTasks(): List<Task> = repository.getIncompleteTasks()
 
     fun addTask(label: String) {
-        repository.addTask(label)
+        val newTask = Task(label = label)
+        repository.addTask(newTask)
         refreshTasks()
     }
 
-    fun markAsDone(id: Int) {
+    fun markAsDone(id: String) {
         repository.markTaskAsDone(id)
         refreshTasks()
     }
 
-    fun removeTask(id: Int) {
+    fun removeTask(id: String) {
         repository.removeTask(id)
         refreshTasks()
     }
 
     private fun refreshTasks() {
-        _tasks.clear()
-        _tasks.addAll(repository.getAllTasks())
+//        repository.getTasks { taskList ->
+            _tasks.clear()
+//            _tasks.addAll(taskList)
+//        }
     }
 }

@@ -7,13 +7,17 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.overscroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.materialIcon
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -42,74 +46,72 @@ fun TaskScreen(viewModel: TaskViewModel, darkTheme: Boolean = false) {
     val tasks by remember { derivedStateOf { viewModel.tasks } }
     val incompleteTasks = tasks.filter { !it.isDone }
     val completedTasks = tasks.filter { it.isDone }
-    Column(
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .background(backgroundColor)
             .padding(16.dp)
     ) {
-
         // Header
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("To-Do App", fontWeight = FontWeight.Bold, color = textColor, fontSize = 20.sp)
-            IconButton(onClick = { /* TODO: menu */ }) {
-                Icon(Icons.Default.Menu, contentDescription = "Menu", tint = textColor)
+        item {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("To-Do App", fontWeight = FontWeight.Bold, color = textColor, fontSize = 20.sp)
+                /*IconButton(onClick = { *//* TODO: menu *//* }) {
+                    Icon(Icons.Default.Menu, contentDescription = "Menu", tint = textColor)
+                }*/
             }
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-        // Add Item
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(cardColor, RoundedCornerShape(12.dp))
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-        ) {
-            BasicTextField(
-                value = newTask,
-                onValueChange = { newTask = it },
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-                textStyle = TextStyle(
-                    color = if (darkTheme) Color.White else Color.Black,
-                    fontSize = 16.sp
-                ),
-                cursorBrush = SolidColor(if (darkTheme) Color.White else Color.Black)
-
-            )
-            IconButton(onClick = {
-                if (newTask.text.isNotBlank()) {
-                    viewModel.addTask(newTask.text)
-                    newTask = TextFieldValue("")
+            // Add Item
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(cardColor, RoundedCornerShape(50.dp))
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                BasicTextField(
+                    value = newTask,
+                    onValueChange = { newTask = it },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    textStyle = TextStyle(color = textColor, fontSize = 16.sp),
+                    cursorBrush = SolidColor(textColor)
+                )
+                IconButton(onClick = {
+                    if (newTask.text.isNotBlank()) {
+                        viewModel.addTask(newTask.text)
+                        newTask = TextFieldValue("")
+                    }
+                }) {
+                    Icon(Icons.Default.Add, contentDescription = "Ajouter une Tâche", tint = Color.Blue, modifier = Modifier.background(Color.White))
                 }
-            }) {
-                Icon(Icons.Default.Add, contentDescription = "Ajouter une Tâche", tint = Color.Blue)
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("TO DO", fontWeight = FontWeight.SemiBold, color = textColor)
+            Spacer(modifier = Modifier.height(8.dp))
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // TO DO Section
-        Text("TO DO", fontWeight = FontWeight.SemiBold, color = textColor)
-        Spacer(modifier = Modifier.height(8.dp))
-        incompleteTasks.asReversed().forEach { task ->
+        // Liste des tâches à faire
+        items(incompleteTasks.asReversed()) { task ->
             TaskItem(task = task, completed = false, darkTheme = darkTheme, viewModel = viewModel)
             Spacer(modifier = Modifier.height(10.dp))
-
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        item {
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("COMPLETED", fontWeight = FontWeight.SemiBold, color = textColor)
+            Spacer(modifier = Modifier.height(8.dp))
+        }
 
-        // COMPLETED Section
-        Text("COMPLETED", fontWeight = FontWeight.SemiBold, color = textColor)
-        Spacer(modifier = Modifier.height(8.dp))
-        completedTasks.asReversed().forEach { task ->
+        // Liste des tâches complétées
+        items(completedTasks.asReversed()) { task ->
             TaskItem(task = task, completed = true, darkTheme = darkTheme, viewModel = viewModel)
             Spacer(modifier = Modifier.height(10.dp))
         }
@@ -197,7 +199,8 @@ fun TaskItem(task: Task, completed: Boolean, darkTheme: Boolean, viewModel: Task
         Box(
             modifier = Modifier
                 .size(24.dp)
-                .clickable { viewModel.markAsDone(task.id) }
+                .clickable { task.id?.let { viewModel.markAsDone(it) } }
+
         ) {
             // Bordure externe
             Box(
@@ -228,35 +231,55 @@ fun TaskItem(task: Task, completed: Boolean, darkTheme: Boolean, viewModel: Task
         }
         Spacer(modifier = Modifier.width(8.dp))
 
-        Text(
-            text = task.label,
-            color = textColor,
-            fontSize = 16.sp,
-            style = if (completed) LocalTextStyle.current.copy(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough) else LocalTextStyle.current
-        )
+        task.label?.let {
+            Text(
+                text = it,
+                color = textColor,
+                fontSize = 16.sp,
+                style = if (completed) LocalTextStyle.current.copy(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough) else LocalTextStyle.current
+            )
+        }
 
         Spacer(modifier = Modifier.weight(1f))
-        var text = "A faire"
+       /* var text = "A faire"
         if(completed)
         {
             text = "Supprimer"
 
-        }
+        }*/
+        IconButton(onClick = {
 
-        Text(
+            task.id?.let { viewModel.removeTask(it)}
+
+        }) {
+            Icon(
+                Icons.Default.Delete,
+                contentDescription = "Supprimer une Tâche",
+                tint = deleteIconColor(true)
+
+            )
+        }
+       /* Text(
             text = text ,
             fontSize = 12.sp,
             modifier = Modifier.clickable {
                 if(completed) {
-                    viewModel.removeTask(task.id)
+                    task.id?.let { viewModel.removeTask(it) }
                 }
             },
             color = if (darkTheme) Color(0xFFB0B0B0) else Color.Gray
-        )
+        )*/
 
     }
     Spacer(modifier = Modifier.width(8.dp))
 
+}
+fun deleteIconColor(darkTheme: Boolean): Color {
+    return if (darkTheme) {
+        Color.hsl(0f, 0.25f, 0.78f) // Rouge clair désaturé
+    } else {
+        Color.hsl(0f, 0.75f, 0.45f) // Rouge plus vif
+    }
 }
 @Preview(showBackground = true)
 @Composable
