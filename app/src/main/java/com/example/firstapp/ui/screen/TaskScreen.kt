@@ -285,6 +285,15 @@ fun deleteIconColor(darkTheme: Boolean): Color {
 @Composable
 fun DefaultPreview() {
     TodoAppTheme {
-        TaskScreen(viewModel = TaskViewModel(), darkTheme = true)
+        // Utilisation du FakeRepository pour injecter des données factices
+        val fakeRepo = com.example.firstapp.data.repository.FakeTaskRepository()
+        val fakeViewModel = com.example.firstapp.ui.viewmodel.TaskViewModel(
+            object : com.example.firstapp.data.repository.TaskRepository(
+                android.content.ContextWrapper(null) // contexte factice
+            ) {
+                override fun getAllTasks(): List<Task> = fakeRepo.getAllTasks()
+            }
+        )
+        TaskScreen(viewModel = fakeViewModel, darkTheme = true)
     }
 }
