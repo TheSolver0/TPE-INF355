@@ -1,6 +1,8 @@
 package com.example.firstapp.ui.screen
 
 import android.util.Log
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,19 +20,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.firstapp.data.model.Task
-import com.example.firstapp.data.repository.TaskRepository
-import com.example.firstapp.ui.theme.TodoAppTheme
 import com.example.firstapp.ui.viewmodel.TaskViewModel
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.animation.AnimatedVisibility as AnimatedVisibility1
 
 @Composable
 fun TaskScreen(viewModel: TaskViewModel, darkTheme: Boolean = false) {
@@ -41,16 +42,17 @@ fun TaskScreen(viewModel: TaskViewModel, darkTheme: Boolean = false) {
 
     var newTask by remember { mutableStateOf(TextFieldValue("")) }
 
-    // CORRECTION : Observer directement tasks au lieu d'utiliser derivedStateOf
     val tasks = viewModel.tasks
-    val incompleteTasks = remember(tasks) { tasks.filter { !it.isDone } }
-    val completedTasks = remember(tasks) { tasks.filter { it.isDone } }
+    val isSyncing = viewModel.isSyncing
+    val isTimeout = viewModel.isTimeout
+    val incompleteTasks = tasks.filter { !it.isDone }
+    val completedTasks = tasks.filter { it.isDone }
 
-    // Debug : voir les changements en temps réel
-    LaunchedEffect(tasks.size) {
-        Log.d("TaskScreen", "🔄 Recomposition - ${tasks.size} tâches")
-        Log.d("TaskScreen", "   TO DO: ${incompleteTasks.size}")
-        Log.d("TaskScreen", "   COMPLETED: ${completedTasks.size}")
+    LaunchedEffect(tasks.size, incompleteTasks.size, completedTasks.size) {
+        Log.d("TaskScreen", "Recomposition detectee")
+        Log.d("TaskScreen", "Total: ${tasks.size}")
+        Log.d("TaskScreen", "TO DO: ${incompleteTasks.size}")
+        Log.d("TaskScreen", "COMPLETED: ${completedTasks.size}")
     }
 
     LazyColumn(
@@ -59,7 +61,6 @@ fun TaskScreen(viewModel: TaskViewModel, darkTheme: Boolean = false) {
             .background(backgroundColor)
             .padding(16.dp)
     ) {
-        // Header
         item {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -72,11 +73,19 @@ fun TaskScreen(viewModel: TaskViewModel, darkTheme: Boolean = false) {
                     color = textColor,
                     fontSize = 20.sp
                 )
+
+                // Indicateur de synchronisation
+                AnimatedVisibility1(
+                    visible = isSyncing,
+                    enter = fadeIn() + scaleIn(),
+                    exit = fadeOut() + scaleOut()
+                ) {
+                    SyncIndicator(isTimeout = isTimeout)
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Add Item
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -95,7 +104,7 @@ fun TaskScreen(viewModel: TaskViewModel, darkTheme: Boolean = false) {
                         Box(modifier = Modifier.padding(4.dp)) {
                             if (newTask.text.isEmpty()) {
                                 Text(
-                                    "Ajouter une tâche...",
+                                    "Ajouter une tache...",
                                     style = TextStyle(
                                         color = textColor.copy(alpha = 0.5f),
                                         fontSize = 16.sp
@@ -114,7 +123,7 @@ fun TaskScreen(viewModel: TaskViewModel, darkTheme: Boolean = false) {
                 }) {
                     Icon(
                         Icons.Default.Add,
-                        contentDescription = "Ajouter une Tâche",
+                        contentDescription = "Ajouter",
                         tint = Color.Blue,
                         modifier = Modifier.background(Color.White, CircleShape)
                     )
@@ -126,11 +135,13 @@ fun TaskScreen(viewModel: TaskViewModel, darkTheme: Boolean = false) {
             Spacer(modifier = Modifier.height(8.dp))
         }
 
-        // Liste des tâches à faire
-        items(incompleteTasks.asReversed()) { task ->
-            TaskItem(
+        items(
+            items = incompleteTasks.asReversed(),
+            key = { it.id ?: it.hashCode() }
+        ) { task ->
+            AnimatedTaskItem(
                 task = task,
-                completed = false,
+                completed = task.isDone,
                 darkTheme = darkTheme,
                 viewModel = viewModel
             )
@@ -143,16 +154,101 @@ fun TaskScreen(viewModel: TaskViewModel, darkTheme: Boolean = false) {
             Spacer(modifier = Modifier.height(8.dp))
         }
 
-        // Liste des tâches complétées
-        items(completedTasks.asReversed()) { task ->
-            TaskItem(
+        items(
+            items = completedTasks.asReversed(),
+            key = { it.id ?: it.hashCode() }
+        ) { task ->
+            AnimatedTaskItem(
                 task = task,
-                completed = true,
+                completed = task.isDone,
                 darkTheme = darkTheme,
                 viewModel = viewModel
             )
             Spacer(modifier = Modifier.height(10.dp))
         }
+    }
+}
+
+@Composable
+fun SyncIndicator(isTimeout: Boolean = false) {
+    val infiniteTransition = rememberInfiniteTransition(label = "sync")
+
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rotation"
+    )
+
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "alpha"
+    )
+
+    val color = if (isTimeout) Color(0xFFFF9800) else Color(0xFF6200EE)
+    val text = if (isTimeout) "En attente" else "Synchro"
+
+    Surface(
+        modifier = Modifier.padding(8.dp),
+        shape = RoundedCornerShape(20.dp),
+        color = color.copy(alpha = 0.1f)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier
+                    .size(18.dp)
+                    .rotate(rotation),
+                strokeWidth = 2.5.dp,
+                color = color.copy(alpha = alpha)
+            )
+            Text(
+                text,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = color.copy(alpha = alpha)
+            )
+        }
+    }
+}
+
+@Composable
+fun AnimatedTaskItem(
+    task: Task,
+    completed: Boolean,
+    darkTheme: Boolean,
+    viewModel: TaskViewModel
+) {
+    AnimatedVisibility1(
+        visible = true,
+        enter = slideInVertically(
+            initialOffsetY = { -40 },
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessLow
+            )
+        ) + fadeIn(),
+        exit = slideOutVertically(
+            targetOffsetY = { -40 }
+        ) + fadeOut()
+    ) {
+        TaskItem(
+            task = task,
+            completed = completed,
+            darkTheme = darkTheme,
+            viewModel = viewModel
+        )
     }
 }
 
@@ -170,29 +266,30 @@ fun TaskItem(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
+            .animateContentSize(
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMedium
+                )
+            )
             .background(cardColor, RoundedCornerShape(8.dp))
             .padding(12.dp)
     ) {
-        // Checkbox personnalisée - CORRECTION : vérifier que task.id n'est pas null
         Box(
             modifier = Modifier
                 .size(24.dp)
                 .clickable {
                     task.id?.let { id ->
+                        Log.d("TaskItem", "Click sur tache: $id (isDone=${task.isDone})")
                         viewModel.markAsDone(id)
-                    } ?: run {
-                        Log.w("TaskItem", "⚠️ Tentative de toggle sur tâche sans ID")
                     }
                 }
         ) {
-            // Bordure externe
             Box(
                 modifier = Modifier
                     .matchParentSize()
                     .border(1.5.dp, Color.Gray, CircleShape)
             )
-
-            // Fond blanc intérieur
             Box(
                 modifier = Modifier
                     .matchParentSize()
@@ -200,11 +297,18 @@ fun TaskItem(
                     .background(Color.White, CircleShape)
             )
 
-            // Coche quand terminé
-            if (task.isDone) {
+            this@Row.AnimatedVisibility1(
+                visible = task.isDone,
+                enter = scaleIn(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy
+                    )
+                ) + fadeIn(),
+                exit = scaleOut() + fadeOut()
+            ) {
                 Icon(
                     imageVector = Icons.Default.Check,
-                    contentDescription = "Terminé",
+                    contentDescription = "Termine",
                     modifier = Modifier
                         .matchParentSize()
                         .padding(4.dp),
@@ -215,15 +319,14 @@ fun TaskItem(
 
         Spacer(modifier = Modifier.width(12.dp))
 
-        // Texte de la tâche
         task.label?.let {
             Text(
                 text = it,
                 color = textColor,
                 fontSize = 16.sp,
-                style = if (completed) {
+                style = if (task.isDone) {
                     LocalTextStyle.current.copy(
-                        textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough
+                        textDecoration = TextDecoration.LineThrough
                     )
                 } else {
                     LocalTextStyle.current
@@ -232,203 +335,16 @@ fun TaskItem(
             )
         }
 
-        // Bouton Supprimer - CORRECTION : vérifier que task.id n'est pas null
         IconButton(
             onClick = {
-                task.id?.let { id ->
-                    viewModel.removeTask(id)
-                } ?: run {
-                    Log.w("TaskItem", "⚠️ Tentative de suppression sur tâche sans ID")
-                }
+                task.id?.let { viewModel.removeTask(it) }
             }
         ) {
             Icon(
                 Icons.Default.Delete,
-                contentDescription = "Supprimer une Tâche",
-                tint = deleteIconColor(darkTheme)
+                contentDescription = "Supprimer",
+                tint = if (darkTheme) Color.hsl(0f, 0.25f, 0.78f) else Color.hsl(0f, 0.75f, 0.45f)
             )
         }
-    }
-}
-
-fun deleteIconColor(darkTheme: Boolean): Color {
-    return if (darkTheme) {
-        Color.hsl(0f, 0.25f, 0.78f) // Rouge clair désaturé
-    } else {
-        Color.hsl(0f, 0.75f, 0.45f) // Rouge plus vif
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun DefaultPreview() {
-    // Pour la preview, on crée un ViewModel simple sans vrai repository
-    // Ceci n'est utilisé que pour la preview, pas dans l'app réelle
-    TodoAppTheme {
-        // Preview avec des données mockées
-        PreviewTaskScreen()
-    }
-}
-
-@Composable
-private fun PreviewTaskScreen() {
-    val backgroundColor = Color(0xFF2C2F4A)
-    val textColor = Color.White
-    val cardColor = Color(0xFF3A3F6E)
-
-    // Données de preview mockées
-    val previewTasks = remember {
-        listOf(
-            Task(id = "1", label = "Faire les courses", isDone = false),
-            Task(id = "2", label = "Étudier Kotlin", isDone = false),
-            Task(id = "3", label = "Lire un livre", isDone = true)
-        )
-    }
-
-    var newTask by remember { mutableStateOf(TextFieldValue("")) }
-    val incompleteTasks = previewTasks.filter { !it.isDone }
-    val completedTasks = previewTasks.filter { it.isDone }
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(backgroundColor)
-            .padding(16.dp)
-    ) {
-        item {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    "To-Do App",
-                    fontWeight = FontWeight.Bold,
-                    color = textColor,
-                    fontSize = 20.sp
-                )
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(cardColor, RoundedCornerShape(50.dp))
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-            ) {
-                BasicTextField(
-                    value = newTask,
-                    onValueChange = { newTask = it },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    textStyle = TextStyle(color = textColor, fontSize = 16.sp),
-                    cursorBrush = SolidColor(textColor),
-                    decorationBox = { innerTextField ->
-                        Box(modifier = Modifier.padding(4.dp)) {
-                            if (newTask.text.isEmpty()) {
-                                Text(
-                                    "Ajouter une tâche...",
-                                    style = TextStyle(
-                                        color = textColor.copy(alpha = 0.5f),
-                                        fontSize = 16.sp
-                                    )
-                                )
-                            }
-                            innerTextField()
-                        }
-                    }
-                )
-                Icon(
-                    Icons.Default.Add,
-                    contentDescription = "Ajouter",
-                    tint = Color.Blue,
-                    modifier = Modifier.background(Color.White, CircleShape)
-                )
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("TO DO", fontWeight = FontWeight.SemiBold, color = textColor)
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-
-        items(incompleteTasks) { task ->
-            PreviewTaskItem(task, false, true)
-            Spacer(modifier = Modifier.height(10.dp))
-        }
-
-        item {
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("COMPLETED", fontWeight = FontWeight.SemiBold, color = textColor)
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-
-        items(completedTasks) { task ->
-            PreviewTaskItem(task, true, true)
-            Spacer(modifier = Modifier.height(10.dp))
-        }
-    }
-}
-
-@Composable
-private fun PreviewTaskItem(task: Task, completed: Boolean, darkTheme: Boolean) {
-    val cardColor = if (darkTheme) Color(0xFF3A3F6E) else Color.White
-    val textColor = if (darkTheme) Color.White else Color.Black
-
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(cardColor, RoundedCornerShape(8.dp))
-            .padding(12.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(24.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .border(1.5.dp, Color.Gray, CircleShape)
-            )
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .padding(3.dp)
-                    .background(Color.White, CircleShape)
-            )
-            if (task.isDone) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = "Terminé",
-                    modifier = Modifier
-                        .matchParentSize()
-                        .padding(4.dp),
-                    tint = Color.Blue
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        task.label?.let {
-            Text(
-                text = it,
-                color = textColor,
-                fontSize = 16.sp,
-                style = if (completed) {
-                    LocalTextStyle.current.copy(
-                        textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough
-                    )
-                } else {
-                    LocalTextStyle.current
-                },
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        Icon(
-            Icons.Default.Delete,
-            contentDescription = "Supprimer",
-            tint = deleteIconColor(darkTheme)
-        )
     }
 }

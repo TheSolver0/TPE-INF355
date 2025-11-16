@@ -28,32 +28,32 @@ class TaskRepository(context: Context) {
     }
 
     init {
-        Log.d(TAG, "🔧 Repository initialisé")
-        Log.d(TAG, "📍 Firebase path: ${tasksRef.path}")
+        Log.d(TAG, "Repository initialisé")
+//        Log.d(TAG, "Firebase path: ${tasksRef.path}")
     }
 
     // ========== RÉCUPÉRATION DES TÂCHES ==========
 
     suspend fun getAllTasks(): List<Task> {
         val cached = getCachedTasks()
-        Log.d(TAG, "📦 getAllTasks() - Cache contient: ${cached.size} tâches")
+        Log.d(TAG, "getAllTasks() - Cache contient: ${cached.size} tâches")
         return cached
     }
 
     // ========== AJOUT DE TÂCHE ==========
 
     suspend fun addTask(task: Task) {
-        Log.d(TAG, "➕ addTask() appelé: ${task.label}")
-
+        Log.d(TAG, "addTask() appelé: ${task.label}")
+//        kotlinx.coroutines.delay(2000)
         // Générer un ID si absent
         val taskId = task.id ?: tasksRef.push().key
         if (taskId == null) {
-            Log.e(TAG, "❌ Impossible de générer un ID Firebase")
+            Log.e(TAG, "Impossible de générer un ID Firebase")
             return
         }
 
         val taskWithId = task.copy(id = taskId)
-        Log.d(TAG, "🆔 ID généré: $taskId")
+        Log.d(TAG, "ID généré: $taskId")
 
         try {
             // 1. Créer un Map pour forcer la structure
@@ -65,15 +65,15 @@ class TaskRepository(context: Context) {
 
             // Sauvegarde Firebase avec la structure exacte
             tasksRef.child(taskId).setValue(taskMap).await()
-            Log.d(TAG, "✅ Tâche sauvegardée dans Firebase: $taskId")
+            Log.d(TAG, "Tâche sauvegardée dans Firebase: $taskId")
 
             // 2. Mise à jour du cache local
             addTaskToCache(taskWithId)
-            Log.d(TAG, "✅ Tâche ajoutée au cache local")
+            Log.d(TAG, "Tâche ajoutée au cache local")
 
             removePendingSync(taskId)
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Erreur lors de l'ajout Firebase: ${e.message}", e)
+            Log.e(TAG, "Erreur lors de l'ajout Firebase: ${e.message}", e)
             // En cas d'échec, sauvegarder localement et marquer pour sync
             addTaskToCache(taskWithId)
             addPendingSync(taskId)
@@ -83,26 +83,26 @@ class TaskRepository(context: Context) {
     // ========== MARQUAGE COMME TERMINÉ/NON TERMINÉ ==========
 
     suspend fun markTaskAsDone(taskId: String) {
-        Log.d(TAG, "✓ markTaskAsDone() appelé: $taskId")
-
+        Log.d(TAG, "markTaskAsDone() appelé: $taskId")
+//        kotlinx.coroutines.delay(2000)
         try {
             // Récupérer l'état actuel de la tâche
             val currentTask = getCachedTasks().find { it.id == taskId }
             val newIsDoneState = !(currentTask?.isDone ?: false)
 
-            Log.d(TAG, "🔄 Changement d'état: ${currentTask?.isDone} → $newIsDoneState")
+            Log.d(TAG, "Changement d'état: ${currentTask?.isDone} → $newIsDoneState")
 
             // 1. Mise à jour Firebase
             tasksRef.child(taskId).child("isDone").setValue(newIsDoneState).await()
-            Log.d(TAG, "✅ isDone=$newIsDoneState dans Firebase: $taskId")
+            Log.d(TAG, "isDone=$newIsDoneState dans Firebase: $taskId")
 
             // 2. Mise à jour du cache
             updateTaskInCache(taskId) { it.copy(isDone = newIsDoneState) }
-            Log.d(TAG, "✅ Cache local mis à jour")
+            Log.d(TAG, "Cache local mis à jour")
 
             removePendingSync(taskId)
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Erreur marquage terminé: ${e.message}", e)
+            Log.e(TAG, "Erreur marquage terminé: ${e.message}", e)
             // Inverser quand même localement en cas d'erreur réseau
             val currentTask = getCachedTasks().find { it.id == taskId }
             val newIsDoneState = !(currentTask?.isDone ?: false)
@@ -114,20 +114,20 @@ class TaskRepository(context: Context) {
     // ========== SUPPRESSION DE TÂCHE ==========
 
     suspend fun removeTask(taskId: String) {
-        Log.d(TAG, "🗑️ removeTask() appelé: $taskId")
+        Log.d(TAG, "removeTask() appelé: $taskId")
 
         try {
             // 1. Suppression Firebase
             tasksRef.child(taskId).removeValue().await()
-            Log.d(TAG, "✅ Tâche supprimée de Firebase: $taskId")
+            Log.d(TAG, "Tâche supprimée de Firebase: $taskId")
 
             // 2. Suppression du cache
             removeTaskFromCache(taskId)
-            Log.d(TAG, "✅ Tâche supprimée du cache")
+            Log.d(TAG, "Tâche supprimée du cache")
 
             removePendingSync(taskId)
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Erreur suppression: ${e.message}", e)
+            Log.e(TAG, "Erreur suppression: ${e.message}", e)
             removeTaskFromCache(taskId)
             addPendingSync(taskId)
         }
@@ -138,17 +138,17 @@ class TaskRepository(context: Context) {
     private fun getCachedTasks(): List<Task> {
         val json = sharedPrefs.getString(CACHE_KEY, null)
         if (json == null) {
-            Log.d(TAG, "📦 Cache vide")
+            Log.d(TAG, "Cache vide")
             return emptyList()
         }
 
         return try {
             val type = object : TypeToken<List<Task>>() {}.type
             val tasks: List<Task> = gson.fromJson(json, type)
-            Log.d(TAG, "📦 Cache chargé: ${tasks.size} tâches")
+            Log.d(TAG, "Cache chargé: ${tasks.size} tâches")
             tasks
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Erreur lecture cache: ${e.message}", e)
+            Log.e(TAG, "Erreur lecture cache: ${e.message}", e)
             emptyList()
         }
     }
@@ -157,9 +157,9 @@ class TaskRepository(context: Context) {
         try {
             val json = gson.toJson(tasks)
             sharedPrefs.edit().putString(CACHE_KEY, json).apply()
-            Log.d(TAG, "💾 Cache sauvegardé: ${tasks.size} tâches")
+            Log.d(TAG, "Cache sauvegardé: ${tasks.size} tâches")
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Erreur sauvegarde cache: ${e.message}", e)
+            Log.e(TAG, "Erreur sauvegarde cache: ${e.message}", e)
         }
     }
 
@@ -177,9 +177,9 @@ class TaskRepository(context: Context) {
         if (index != -1) {
             tasks[index] = transform(tasks[index])
             saveCachedTasks(tasks)
-            Log.d(TAG, "✅ Tâche mise à jour dans le cache: $taskId")
+            Log.d(TAG, "Tâche mise à jour dans le cache: $taskId")
         } else {
-            Log.w(TAG, "⚠️ Tâche non trouvée dans le cache: $taskId")
+            Log.w(TAG, "Tâche non trouvée dans le cache: $taskId")
         }
     }
 
@@ -188,14 +188,14 @@ class TaskRepository(context: Context) {
         val removed = tasks.removeAll { it.id == taskId }
         if (removed) {
             saveCachedTasks(tasks)
-            Log.d(TAG, "✅ Tâche supprimée du cache: $taskId")
+            Log.d(TAG, "Tâche supprimée du cache: $taskId")
         } else {
-            Log.w(TAG, "⚠️ Tâche non trouvée dans le cache: $taskId")
+            Log.w(TAG, "Tâche non trouvée dans le cache: $taskId")
         }
     }
 
     fun updateCache(tasks: List<Task>) {
-        Log.d(TAG, "🔄 updateCache() appelé avec ${tasks.size} tâches")
+        Log.d(TAG, "updateCache() appelé avec ${tasks.size} tâches")
         saveCachedTasks(tasks)
         updateLastSyncTimestamp()
     }
@@ -206,7 +206,7 @@ class TaskRepository(context: Context) {
         val pending = getPendingSyncIds().toMutableSet()
         pending.add(taskId)
         sharedPrefs.edit().putStringSet(PENDING_SYNC_KEY, pending).apply()
-        Log.d(TAG, "📝 Tâche ajoutée à la file de sync: $taskId")
+        Log.d(TAG, "Tâche ajoutée à la file de sync: $taskId")
     }
 
     private fun removePendingSync(taskId: String) {
@@ -221,7 +221,7 @@ class TaskRepository(context: Context) {
 
     suspend fun syncPendingTasks() {
         val pendingIds = getPendingSyncIds()
-        Log.d(TAG, "🔄 syncPendingTasks(): ${pendingIds.size} tâches en attente")
+        Log.d(TAG, "syncPendingTasks(): ${pendingIds.size} tâches en attente")
 
         val cachedTasks = getCachedTasks()
 
@@ -237,9 +237,9 @@ class TaskRepository(context: Context) {
                     )
                     tasksRef.child(taskId).setValue(taskMap).await()
                     removePendingSync(taskId)
-                    Log.d(TAG, "✅ Resync réussie pour: $taskId")
+                    Log.d(TAG, "Resync réussie pour: $taskId")
                 } catch (e: Exception) {
-                    Log.e(TAG, "❌ Échec resync pour $taskId: ${e.message}")
+                    Log.e(TAG, "Échec resync pour $taskId: ${e.message}")
                 }
             }
         }
@@ -261,14 +261,14 @@ class TaskRepository(context: Context) {
             .remove(PENDING_SYNC_KEY)
             .remove(LAST_SYNC_KEY)
             .apply()
-        Log.d(TAG, "🧹 Cache nettoyé")
+        Log.d(TAG, "Cache nettoyé")
     }
 
     // ========== DÉBOGAGE ==========
 
     fun debugState() {
         Log.d(TAG, "=== DEBUG REPOSITORY ===")
-        Log.d(TAG, "Firebase path: ${tasksRef.path}")
+//        Log.d(TAG, "Firebase path: ${tasksRef.path}")
         Log.d(TAG, "Cache size: ${getCachedTasks().size}")
         Log.d(TAG, "Pending sync: ${getPendingSyncIds()}")
         Log.d(TAG, "Last sync: ${getLastSyncTimestamp()}")

@@ -1,7 +1,7 @@
 package com.example.firstapp.ui.viewmodel
 
 import android.util.Log
-import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.firstapp.data.model.Task
@@ -10,142 +10,165 @@ import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.ValueEventListener
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class TaskViewModel() : ViewModel() {
+class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
 
-    private val repository = TaskRepository();
-    // Liste observable pour Compose
-    private val _tasks = mutableStateListOf<Task>()
-    val tasks: List<Task> get() = _tasks
+    private val _tasks = mutableStateOf<List<Task>>(emptyList())
+    val tasks: List<Task> get() = _tasks.value
+
+    private val _isSyncing = mutableStateOf(false)
+    val isSyncing: Boolean get() = _isSyncing.value
+
+    private val _isTimeout = mutableStateOf(false)
+    val isTimeout: Boolean get() = _isTimeout.value
+
+    private var syncTimeoutJob: Job? = null
 
     companion object {
         private const val TAG = "TaskViewModel"
+        private const val SYNC_TIMEOUT = 10000L // 10 secondes
     }
 
     init {
+        Log.d(TAG, "Initialisation du ViewModel")
 
-        // 1. Charger d'abord le cache local pour affichage immédiat
         viewModelScope.launch(Dispatchers.IO) {
             val cachedTasks = repository.getAllTasks()
-            Log.d(TAG, "📦 Cache chargé: ${cachedTasks.size} tâches")
+            Log.d(TAG, "Cache charge: ${cachedTasks.size} taches")
             withContext(Dispatchers.Main) {
-                _tasks.clear()
-                _tasks.addAll(cachedTasks)
-                Log.d(TAG, "✅ UI mise à jour avec le cache")
+                _tasks.value = cachedTasks
+                Log.d(TAG, "UI mise a jour avec ${_tasks.value.size} taches")
             }
         }
 
-        // 2. Écouter Firebase en temps réel
         repository.tasksRef.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-                Log.d(TAG, "🔥 Firebase onDataChange déclenché")
+                Log.d(TAG, "===== FIREBASE ONDATACHANGE DECLENCHE =====")
                 val updatedTasks = mutableListOf<Task>()
 
                 for (child in snapshot.children) {
                     child.getValue(Task::class.java)?.let { task ->
                         updatedTasks.add(task)
-                        Log.d(TAG, "   - Tâche: ${task.id} | ${task.label} | isDone=${task.isDone}")
+                        Log.d(TAG, "  -> ${task.id}: ${task.label} | isDone=${task.isDone}")
                     }
                 }
 
-                Log.d(TAG, "📊 Total tâches Firebase: ${updatedTasks.size}")
+                Log.d(TAG, "Total taches: ${updatedTasks.size}")
 
-                // IMPORTANT : Mettre à jour sur le Main thread pour déclencher recomposition
                 viewModelScope.launch(Dispatchers.Main) {
-                    _tasks.clear()
-                    _tasks.addAll(updatedTasks)
-                    Log.d(TAG, "✅ UI recomposée avec ${_tasks.size} tâches")
+                    _tasks.value = updatedTasks.toList()
+                    stopSyncing()
+                    Log.d(TAG, "UI mise a jour: ${_tasks.value.size} taches")
                 }
 
-                // Mettre à jour le cache local
                 repository.updateCache(updatedTasks)
-                Log.d(TAG, "✅ Cache local mis à jour")
             }
 
             override fun onCancelled(error: DatabaseError) {
-                Log.e(TAG, "❌ Erreur Firebase: ${error.message}")
+                Log.e(TAG, "Erreur Firebase: ${error.message}")
+                viewModelScope.launch(Dispatchers.Main) {
+                    stopSyncing()
+                }
             }
         })
 
-        // 3. Resynchroniser les modifications en attente
         viewModelScope.launch(Dispatchers.IO) {
             repository.syncPendingTasks()
-            Log.d(TAG, "🔄 Synchronisation des tâches en attente effectuée")
         }
     }
 
-    // Tâches complétées
-    fun getCompletedTasks(): List<Task> = _tasks.filter { it.isDone }
+    private fun startSyncing() {
+        _isSyncing.value = true
+        _isTimeout.value = false
 
-    // Tâches incomplètes
-    fun getIncompleteTasks(): List<Task> = _tasks.filter { !it.isDone }
+        syncTimeoutJob?.cancel()
 
-    // Ajouter une tâche
+        syncTimeoutJob = viewModelScope.launch {
+            delay(SYNC_TIMEOUT)
+            Log.w(TAG, "Timeout de synchronisation atteint")
+            _isTimeout.value = true
+        }
+    }
+
+    private fun stopSyncing() {
+        syncTimeoutJob?.cancel()
+        _isSyncing.value = false
+        _isTimeout.value = false
+    }
+
+    fun getCompletedTasks(): List<Task> = _tasks.value.filter { it.isDone }
+
+    fun getIncompleteTasks(): List<Task> = _tasks.value.filter { !it.isDone }
+
     fun addTask(label: String) {
         if (label.isBlank()) {
-            Log.w(TAG, "⚠️ Tentative d'ajout d'une tâche vide")
+            Log.w(TAG, "Tentative d'ajout d'une tache vide")
             return
         }
 
+        startSyncing()
         val newTask = Task(label = label.trim(), isDone = false)
-        Log.d(TAG, "➕ Ajout tâche: $label")
+        Log.d(TAG, "Ajout tache: $label")
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 repository.addTask(newTask)
-                Log.d(TAG, "Tâche ajoutée avec succès: $label")
+                Log.d(TAG, "Tache ajoutee avec succes: $label")
             } catch (e: Exception) {
-                Log.e(TAG, "Erreur ajout tâche: ${e.message}", e)
+                Log.e(TAG, "Erreur ajout tache: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    stopSyncing()
+                }
             }
         }
-        refreshTasks()
-
     }
 
-    // Marquer une tâche comme terminée ou non terminée (toggle)
     fun markAsDone(id: String) {
-        val currentTask = _tasks.find { it.id == id }
-        Log.d(TAG, "✓ Toggle état tâche: $id (actuel: ${currentTask?.isDone})")
+        val currentTask = _tasks.value.find { it.id == id }
+        Log.d(TAG, "Toggle etat tache: $id (actuel: ${currentTask?.isDone})")
+
+        startSyncing()
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 repository.markTaskAsDone(id)
-                Log.d(TAG, "✅ État de la tâche changé: $id")
+                Log.d(TAG, "Etat de la tache change: $id")
             } catch (e: Exception) {
-                Log.e(TAG, "❌ Erreur changement d'état: ${e.message}", e)
+                Log.e(TAG, "Erreur changement d'etat: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    stopSyncing()
+                }
             }
         }
     }
 
-    // Supprimer une tâche
     fun removeTask(id: String) {
-        Log.d(TAG, "🗑️ Suppression tâche: $id")
+        Log.d(TAG, "Suppression tache: $id")
+        startSyncing()
+
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 repository.removeTask(id)
-                Log.d(TAG, "✅ Tâche supprimée: $id")
+                Log.d(TAG, "Tache supprimee: $id")
             } catch (e: Exception) {
-                Log.e(TAG, "❌ Erreur suppression: ${e.message}", e)
+                Log.e(TAG, "Erreur suppression: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    stopSyncing()
+                }
             }
         }
     }
 
-    // Fonction de débogage pour vérifier l'état
     fun debugState() {
         Log.d(TAG, "=== DEBUG TASKS ===")
-        Log.d(TAG, "Nombre de tâches: ${_tasks.size}")
-        _tasks.forEachIndexed { index, task ->
+        Log.d(TAG, "Nombre de taches: ${_tasks.value.size}")
+        _tasks.value.forEachIndexed { index, task ->
             Log.d(TAG, "$index: ${task.id} - ${task.label} - Done: ${task.isDone}")
         }
         Log.d(TAG, "==================")
-    }
-
-    private fun refreshTasks() {
-//        repository.getTasks { taskList ->
-        _tasks.clear()
-//            _tasks.addAll(taskList)
-//        }
     }
 }
